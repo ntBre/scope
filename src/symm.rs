@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::{collections::HashMap, str::FromStr, string::ParseError};
+
 use nalgebra as na;
 
 // TODO expand beyond cartesian axes. an alternative formulation of this is to
@@ -7,7 +9,7 @@ use nalgebra as na;
 // rotations pretty much assume you are along the cartesian axes
 
 // restrict these to the cartesian axes for now
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Axis {
     X,
     Y,
@@ -16,7 +18,7 @@ pub enum Axis {
 
 // restrict these to combinations of cartesian axes for now. a more general
 // plane is described by (a, b, c) in the equation ax + by + cz = 0
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct Plane(Axis, Axis);
 
 #[derive(Debug, Clone)]
@@ -49,9 +51,84 @@ impl Atom {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, PartialEq)]
+pub enum PointGroup {
+    C1,
+    C2 { axis: Axis },
+    Cs { plane: Plane },
+    C2v { axis: Axis, planes: Vec<Plane> },
+}
+
+#[derive(Debug, Clone)]
 pub struct Molecule {
     pub atoms: Vec<Atom>,
+}
+
+impl PartialEq for Molecule {
+    /// compare molecules for equality, irrespective of order. try to find an
+    /// atom in other that equals the current atom in self. If found, remove it,
+    /// so it can't be double-counted.
+    fn eq(&self, other: &Self) -> bool {
+        let mut theirs = other.atoms.clone();
+        if self.atoms.len() != theirs.len() {
+            return false;
+        }
+        for atom in &self.atoms {
+            let mut pops = Vec::new();
+            let mut found = false;
+            for (i, btom) in theirs.iter().enumerate() {
+                if *atom == *btom {
+                    pops.push(i);
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                return false;
+            }
+            // remove high indices first
+            pops.sort();
+            pops.reverse();
+            for p in pops {
+                theirs.remove(p);
+            }
+        }
+        true
+    }
+}
+
+impl FromStr for Molecule {
+    type Err = ParseError;
+
+    /// parse lines like
+    ///      O           0.000000000    0.000000000   -0.124238453
+    ///      H           0.000000000    1.431390207    0.986041184
+    ///      H           0.000000000   -1.431390207    0.986041184
+    /// into a molecule
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut ret = Self::default();
+        let atomic_symbols = HashMap::from([("H", 1), ("C", 6), ("O", 8)]);
+        for line in s.lines() {
+            let fields = line.split_whitespace().collect::<Vec<_>>();
+            if fields.len() == 4 {
+                let sym = if let Some(&s) = atomic_symbols.get(fields[0]) {
+                    s
+                } else {
+                    panic!(
+                        "atomic symbol '{}' not found, tell Brent!",
+                        fields[0]
+                    );
+                };
+                ret.atoms.push(Atom::new(
+                    sym,
+                    fields[1].parse().unwrap(),
+                    fields[2].parse().unwrap(),
+                    fields[3].parse().unwrap(),
+                ));
+            }
+        }
+        Ok(ret)
+    }
 }
 
 impl Molecule {
@@ -67,9 +144,38 @@ impl Molecule {
         ret
     }
 
+    pub fn point_group(&self) -> PointGroup {
+        use Axis::*;
+        use PointGroup::*;
+        let mut axes = Vec::new();
+        let mut planes = Vec::new();
+        for ax in vec![X, Y, Z] {
+            if self.rotate(180.0, &ax) == *self {
+                axes.push(ax);
+            }
+        }
+        for plane in vec![Plane(X, Y), Plane(X, Z), Plane(Y, Z)] {
+            if self.reflect(&plane) == *self {
+                planes.push(plane);
+            }
+        }
+        if axes.len() == 0 && planes.len() == 1 {
+            Cs { plane: planes[0] }
+        } else if axes.len() == 1 && planes.len() == 0 {
+            C2 { axis: axes[0] }
+        } else if axes.len() == 1 && planes.len() == 2 {
+            C2v {
+                planes,
+                axis: axes[0],
+            }
+        } else {
+            C1
+        }
+    }
+
     /// apply the transformation matrix `mat` to the atoms in `self` and return
     /// the new Molecule
-    pub fn transform(&self, mat: na::Matrix3<f64>) -> Self {
+    fn transform(&self, mat: na::Matrix3<f64>) -> Self {
         let mut ret = Self::default();
         for (i, atom) in self.to_vecs().iter().enumerate() {
             let v = mat * atom;
@@ -83,7 +189,7 @@ impl Molecule {
         ret
     }
 
-    pub fn rotate(&self, deg: f64, axis: Axis) -> Self {
+    pub fn rotate(&self, deg: f64, axis: &Axis) -> Self {
         use Axis::*;
         let deg = deg.to_radians();
         let ct = deg.cos();
@@ -129,7 +235,7 @@ impl Molecule {
         )
     }
 
-    pub fn reflect(&self, plane: Plane) -> Self {
+    pub fn reflect(&self, plane: &Plane) -> Self {
         use Axis::*;
         let ref_mat = match plane {
             Plane(X, Y) | Plane(Y, X) => Self::householder(0.0, 0.0, 1.0),
@@ -210,7 +316,7 @@ mod tests {
         for test in tests {
             let h = Molecule { atoms: test.0 };
             let want = Molecule { atoms: test.1 };
-            let got = h.rotate(test.2, test.3);
+            let got = h.rotate(test.2, &test.3);
             assert_eq!(got, want);
         }
     }
@@ -270,8 +376,28 @@ mod tests {
         for test in tests {
             let h = Molecule { atoms: test.0 };
             let want = Molecule { atoms: test.1 };
-            let got = h.reflect(test.2);
+            let got = h.reflect(&test.2);
             assert_eq!(got, want);
         }
+    }
+
+    #[test]
+    fn test_point_group() {
+        use PointGroup::*;
+        let mol = Molecule::from_str(
+            "
+  O           0.000000000    0.000000000   -0.124238453
+  H           0.000000000    1.431390207    0.986041184
+  H           0.000000000   -1.431390207    0.986041184
+",
+        )
+        .unwrap();
+        assert_eq!(
+            mol.point_group(),
+            C2v {
+                axis: Z,
+                planes: vec![Plane(X, Z), Plane(Y, Z)]
+            }
+        );
     }
 }
