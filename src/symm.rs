@@ -399,5 +399,23 @@ mod tests {
                 planes: vec![Plane(X, Z), Plane(Y, Z)]
             }
         );
+
+        let mol = Molecule::from_str(
+            "
+    C        0.000000   -0.888844    0.000000
+    C       -0.662697    0.368254    0.000000
+    C        0.662697    0.368254    0.000000
+    H       -1.595193    0.906925    0.000000
+    H        1.595193    0.906925    0.000000
+",
+        )
+        .unwrap();
+        assert_eq!(
+            mol.point_group(),
+            C2v {
+                axis: Y,
+                planes: vec![Plane(X, Y), Plane(Y, Z)]
+            }
+        );
     }
 }
