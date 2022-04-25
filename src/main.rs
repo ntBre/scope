@@ -78,10 +78,10 @@ fn parse_infile(filename: &str) -> Spectro {
             let fields: Vec<_> = line.split_whitespace().collect();
             if fields.len() == 0 {
                 skip = 1;
-            } else if header.is_match(&line) || line.contains("--------") {
-                // 10 freqs per chunk, can't set skip to 2 because it would skip
-                // LX matrix at the end
+            } else if header.is_match(&line) {
                 block += 1;
+                continue;
+            } else if line.contains("--------") {
                 continue;
             } else if line.contains("LX MATRIX") {
                 in_lxm = false;
@@ -97,12 +97,23 @@ fn parse_infile(filename: &str) -> Spectro {
                 spectro.freqs.extend(
                     fields
                         .iter()
-                        .map(|s| s.parse::<f64>().unwrap())
+                        .filter_map(|s| {
+                            let f = s.parse::<f64>().unwrap();
+                            if f > 1.0 {
+                                Some(f)
+                            } else {
+                                None
+                            }
+                        })
                         .collect::<Vec<_>>(),
                 );
             }
         }
     }
+    spectro.freqs.reverse();
+    spectro.disps.reverse();
+    spectro.disps =
+        spectro.disps[spectro.disps.len() - spectro.freqs.len()..].to_vec();
     spectro
 }
 
@@ -114,10 +125,10 @@ fn write_outfile(filename: &str, spectro: &Spectro) {
             exit(1);
         }
     };
-    make_outfile(&mut f, &spectro.atoms);
+    make_outfile(&mut f, spectro);
 }
 
-fn make_outfile<W: Write>(w: &mut W, atoms: &Vec<Atom>) {
+fn make_outfile<W: Write>(w: &mut W, spectro: &Spectro) {
     write!(
         w,
         " Entering Gaussian System, Link 0=/usr/local/g16/g16
@@ -130,7 +141,7 @@ fn make_outfile<W: Write>(w: &mut W, atoms: &Vec<Atom>) {
 "
     )
     .unwrap();
-    for (i, atom) in atoms.iter().enumerate() {
+    for (i, atom) in spectro.atoms.iter().enumerate() {
         writeln!(
             w,
             "{:7}{:11}{:12}{:16.6}{:12.6}{:12.6}",
@@ -158,6 +169,35 @@ fn make_outfile<W: Write>(w: &mut W, atoms: &Vec<Atom>) {
  incident light, reduced masses (AMU), force constants (mDyne/A),
  and normal coordinates:
 ").unwrap();
+
+    for (i, chunk) in spectro.freqs.chunks(3).enumerate() {
+        for j in 0..chunk.len() {
+            write!(w, "{:>23}", 3 * i + j + 1).unwrap();
+        }
+        writeln!(w,).unwrap();
+        for _ in chunk {
+            write!(w, "{:>23}", "A1").unwrap();
+        }
+        write!(w, "\n Frequencies --{:>12.4}", chunk[0]).unwrap();
+        for freq in &chunk[1..] {
+            write!(w, "{:>23.4}", freq).unwrap();
+        }
+        writeln!(w,).unwrap();
+        writeln!(w, " Red. masses --      1.0000                 1.0000                 1.0000").unwrap();
+        writeln!(w, " Frc consts  --      1.0000                 1.0000                 1.0000").unwrap();
+        writeln!(w, " IR Inten    --      1.0000                 1.0000                 1.0000").unwrap();
+        writeln!(w, "  Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z").unwrap();
+        for (a, atom) in spectro.atoms.iter().enumerate() {
+            write!(w, "{:6}{:4}  ", a + 1, atom.0).unwrap();
+            for j in 0..chunk.len() {
+                for f in &spectro.disps[3 * i + j][3 * a..3 * a + 3] {
+                    write!(w, "{:7.2}", f).unwrap();
+                }
+		write!(w, "  ").unwrap();
+            }
+            writeln!(w,).unwrap();
+        }
+    }
 }
 
 fn main() {
@@ -175,5 +215,5 @@ fn main() {
         None => "scope.out",
     };
     write_outfile(outfile, &atoms);
-    // make_outfile(&mut std::io::stdout(), &atoms);
+    make_outfile(&mut std::io::stdout(), &atoms);
 }
