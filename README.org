@@ -1,0 +1,5 @@
+#+title: scope
+
+scope might eventually be a molecule viewer, but for now it just converts the
+LXM matrix in SPECTRO output files to the style of Gaussian frequency
+calculations for viewing with programs like Molden
