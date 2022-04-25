@@ -174,17 +174,14 @@ impl Molecule {
                 planes.push(plane);
             }
         }
-        if axes.len() == 0 && planes.len() == 1 {
-            Cs { plane: planes[0] }
-        } else if axes.len() == 1 && planes.len() == 0 {
-            C2 { axis: axes[0] }
-        } else if axes.len() == 1 && planes.len() == 2 {
-            C2v {
+        match (axes.len(), planes.len()) {
+            (0, 1) => Cs { plane: planes[0] },
+            (1, 0) => C2 { axis: axes[0] },
+            (1, 2) => C2v {
                 planes,
                 axis: axes[0],
-            }
-        } else {
-            C1
+            },
+            _ => C1,
         }
     }
 
