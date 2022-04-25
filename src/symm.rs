@@ -59,6 +59,21 @@ pub enum PointGroup {
     C2v { axis: Axis, planes: Vec<Plane> },
 }
 
+pub enum Irrep {
+    // C1
+    A,
+    // C2
+    B,
+    // Cs - p = prime
+    Ap,
+    App,
+    // C2v
+    A1,
+    B1,
+    B2,
+    A2,
+}
+
 #[derive(Debug, Clone)]
 pub struct Molecule {
     pub atoms: Vec<Atom>,
@@ -244,6 +259,11 @@ impl Molecule {
             _ => panic!("unrecognized plane {:?}", plane),
         };
         self.transform(ref_mat)
+    }
+
+    pub fn irrep(&self, _pg: PointGroup) -> Irrep {
+        // use Irrep::*;
+        todo!();
     }
 }
 
