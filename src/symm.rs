@@ -1,0 +1,277 @@
+#![allow(dead_code)]
+
+use nalgebra as na;
+
+// TODO expand beyond cartesian axes. an alternative formulation of this is to
+// align the geometry to a cartesian axis if it doesn't start like that. I think
+// rotations pretty much assume you are along the cartesian axes
+
+// restrict these to the cartesian axes for now
+#[derive(Debug)]
+pub enum Axis {
+    X,
+    Y,
+    Z,
+}
+
+// restrict these to combinations of cartesian axes for now. a more general
+// plane is described by (a, b, c) in the equation ax + by + cz = 0
+#[derive(Debug)]
+pub struct Plane(Axis, Axis);
+
+#[derive(Debug, Clone)]
+pub struct Atom {
+    pub atomic_number: usize,
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+}
+
+impl PartialEq for Atom {
+    fn eq(&self, other: &Self) -> bool {
+        let eps = 1e-8;
+        let close = |a: f64, b: f64| (a - b).abs() < eps;
+        self.atomic_number == other.atomic_number
+            && close(self.x, other.x)
+            && close(self.y, other.y)
+            && close(self.z, other.z)
+    }
+}
+
+impl Atom {
+    pub fn new(atomic_number: usize, x: f64, y: f64, z: f64) -> Self {
+        Self {
+            atomic_number,
+            x,
+            y,
+            z,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Molecule {
+    pub atoms: Vec<Atom>,
+}
+
+impl Molecule {
+    pub fn default() -> Self {
+        Self { atoms: Vec::new() }
+    }
+
+    fn to_vecs(&self) -> Vec<na::Vector3<f64>> {
+        let mut ret = Vec::with_capacity(self.atoms.len());
+        for atom in &self.atoms {
+            ret.push(na::Vector3::new(atom.x, atom.y, atom.z));
+        }
+        ret
+    }
+
+    /// apply the transformation matrix `mat` to the atoms in `self` and return
+    /// the new Molecule
+    pub fn transform(&self, mat: na::Matrix3<f64>) -> Self {
+        let mut ret = Self::default();
+        for (i, atom) in self.to_vecs().iter().enumerate() {
+            let v = mat * atom;
+            ret.atoms.push(Atom::new(
+                self.atoms[i].atomic_number,
+                v[0],
+                v[1],
+                v[2],
+            ));
+        }
+        ret
+    }
+
+    pub fn rotate(&self, deg: f64, axis: Axis) -> Self {
+        use Axis::*;
+        let deg = deg.to_radians();
+        let ct = deg.cos();
+        let st = deg.sin();
+        // from
+        // https://en.wikipedia.org/wiki/Rotation_matrix#In_three_dimensions
+        #[rustfmt::skip]
+	let rot_mat = match axis {
+            X => {
+		na::Matrix3::new(
+		    1., 0., 0.,
+		    0., ct, -st,
+		    0., st, ct,
+		)
+            }
+            Y => {
+		na::Matrix3::new(
+		    ct, 0., st,
+		    0., 1., 0.,
+		    -st, 0., ct,
+		)
+            }
+            Z => {
+		na::Matrix3::new(
+		    ct, -st, 0.,
+		    st, ct, 0.,
+		    0., 0., 1.,
+		)
+            }
+        };
+        self.transform(rot_mat)
+    }
+
+    #[rustfmt::skip]
+    /// return the special case of the Householder reflection in 3 dimensions
+    /// described here:
+    /// <https://en.wikipedia.org/wiki/Transformation_matrix#Reflection_2>
+    fn householder(a: f64, b: f64, c: f64) -> na::Matrix3<f64> {
+        na::Matrix3::new(
+            1. - 2. * a * a, -2. * a * b, -2. * a * c,
+            -2. * a * b, 1. - 2. * b * b, -2. * b * c,
+            -2. * a * c, -2. * b * c, 1. - 2. * c * c,
+        )
+    }
+
+    pub fn reflect(&self, plane: Plane) -> Self {
+        use Axis::*;
+        let ref_mat = match plane {
+            Plane(X, Y) | Plane(Y, X) => Self::householder(0.0, 0.0, 1.0),
+            Plane(X, Z) | Plane(Z, X) => Self::householder(0.0, 1.0, 0.0),
+            Plane(Y, Z) | Plane(Z, Y) => Self::householder(1.0, 0.0, 0.0),
+            _ => panic!("unrecognized plane {:?}", plane),
+        };
+        self.transform(ref_mat)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use Axis::*;
+
+    #[test]
+    fn test_rotate() {
+        let tests = vec![
+            // X around all axes
+            (
+                vec![Atom::new(1, 1.0, 0.0, 0.0)],
+                vec![Atom::new(1, 1.0, 0.0, 0.0)],
+                180.0,
+                X,
+            ),
+            (
+                vec![Atom::new(1, 1.0, 0.0, 0.0)],
+                vec![Atom::new(1, -1.0, 0.0, 0.0)],
+                180.0,
+                Y,
+            ),
+            (
+                vec![Atom::new(1, 1.0, 0.0, 0.0)],
+                vec![Atom::new(1, -1.0, 0.0, 0.0)],
+                180.0,
+                Z,
+            ),
+            // Y around all axes
+            (
+                vec![Atom::new(1, 0.0, 1.0, 0.0)],
+                vec![Atom::new(1, 0.0, -1.0, 0.0)],
+                180.0,
+                X,
+            ),
+            (
+                vec![Atom::new(1, 0.0, 1.0, 0.0)],
+                vec![Atom::new(1, 0.0, 1.0, 0.0)],
+                180.0,
+                Y,
+            ),
+            (
+                vec![Atom::new(1, 0.0, 1.0, 0.0)],
+                vec![Atom::new(1, 0.0, -1.0, 0.0)],
+                180.0,
+                Z,
+            ),
+            // Z around all axes
+            (
+                vec![Atom::new(1, 0.0, 0.0, 1.0)],
+                vec![Atom::new(1, 0.0, 0.0, -1.0)],
+                180.0,
+                X,
+            ),
+            (
+                vec![Atom::new(1, 0.0, 0.0, 1.0)],
+                vec![Atom::new(1, 0.0, 0.0, -1.0)],
+                180.0,
+                Y,
+            ),
+            (
+                vec![Atom::new(1, 0.0, 0.0, 1.0)],
+                vec![Atom::new(1, 0.0, 0.0, 1.0)],
+                180.0,
+                Z,
+            ),
+        ];
+        for test in tests {
+            let h = Molecule { atoms: test.0 };
+            let want = Molecule { atoms: test.1 };
+            let got = h.rotate(test.2, test.3);
+            assert_eq!(got, want);
+        }
+    }
+
+    #[test]
+    fn test_reflect() {
+        let tests = vec![
+            // X through all the planes
+            (
+                vec![Atom::new(1, 1.0, 0.0, 0.0)],
+                vec![Atom::new(1, -1.0, 0.0, 0.0)],
+                Plane(Y, Z),
+            ),
+            (
+                vec![Atom::new(1, 1.0, 0.0, 0.0)],
+                vec![Atom::new(1, 1.0, 0.0, 0.0)],
+                Plane(X, Z),
+            ),
+            (
+                vec![Atom::new(1, 1.0, 0.0, 0.0)],
+                vec![Atom::new(1, 1.0, 0.0, 0.0)],
+                Plane(X, Y),
+            ),
+            // Y through all the planes
+            (
+                vec![Atom::new(1, 0.0, 1.0, 0.0)],
+                vec![Atom::new(1, 0.0, 1.0, 0.0)],
+                Plane(Y, Z),
+            ),
+            (
+                vec![Atom::new(1, 0.0, 1.0, 0.0)],
+                vec![Atom::new(1, 0.0, -1.0, 0.0)],
+                Plane(X, Z),
+            ),
+            (
+                vec![Atom::new(1, 0.0, 1.0, 0.0)],
+                vec![Atom::new(1, 0.0, 1.0, 0.0)],
+                Plane(X, Y),
+            ),
+            // Z through all the planes
+            (
+                vec![Atom::new(1, 0.0, 0.0, 1.0)],
+                vec![Atom::new(1, 0.0, 0.0, 1.0)],
+                Plane(Y, Z),
+            ),
+            (
+                vec![Atom::new(1, 0.0, 0.0, 1.0)],
+                vec![Atom::new(1, 0.0, 0.0, 1.0)],
+                Plane(X, Z),
+            ),
+            (
+                vec![Atom::new(1, 0.0, 0.0, 1.0)],
+                vec![Atom::new(1, 0.0, 0.0, -1.0)],
+                Plane(X, Y),
+            ),
+        ];
+        for test in tests {
+            let h = Molecule { atoms: test.0 };
+            let want = Molecule { atoms: test.1 };
+            let got = h.reflect(test.2);
+            assert_eq!(got, want);
+        }
+    }
+}

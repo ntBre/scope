@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 # gtk = { version = "0.4.7", package = "gtk4" }
 regex = "1"
+nalgebra = "0.30.1"

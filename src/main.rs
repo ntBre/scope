@@ -7,8 +7,9 @@ use std::{
 
 use regex::Regex;
 
-#[derive(Debug)]
-struct Atom(usize, f64, f64, f64);
+mod symm;
+
+use symm::Atom;
 
 #[derive(Debug)]
 struct Spectro {
@@ -68,7 +69,7 @@ fn parse_infile(filename: &str) -> Spectro {
                     .map(|s| s.parse::<f64>().unwrap())
                     .collect::<Vec<_>>()[..]
                 {
-                    spectro.atoms.push(Atom(atomic_number, x, y, z));
+                    spectro.atoms.push(Atom::new(atomic_number, x, y, z));
                 }
             }
         } else if line.contains("LXM MATRIX") {
@@ -146,11 +147,11 @@ fn make_outfile<W: Write>(w: &mut W, spectro: &Spectro) {
             w,
             "{:7}{:11}{:12}{:16.6}{:12.6}{:12.6}",
             i + 1,
-            atom.0,
+            atom.atomic_number,
             0,
-            atom.1,
-            atom.2,
-            atom.3
+            atom.x,
+            atom.y,
+            atom.z
         )
         .unwrap();
     }
@@ -188,12 +189,12 @@ fn make_outfile<W: Write>(w: &mut W, spectro: &Spectro) {
         writeln!(w, " IR Inten    --      1.0000                 1.0000                 1.0000").unwrap();
         writeln!(w, "  Atom  AN      X      Y      Z        X      Y      Z        X      Y      Z").unwrap();
         for (a, atom) in spectro.atoms.iter().enumerate() {
-            write!(w, "{:6}{:4}  ", a + 1, atom.0).unwrap();
+            write!(w, "{:6}{:4}  ", a + 1, atom.atomic_number).unwrap();
             for j in 0..chunk.len() {
                 for f in &spectro.disps[3 * i + j][3 * a..3 * a + 3] {
                     write!(w, "{:7.2}", f).unwrap();
                 }
-		write!(w, "  ").unwrap();
+                write!(w, "  ").unwrap();
             }
             writeln!(w,).unwrap();
         }
