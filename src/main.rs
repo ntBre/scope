@@ -1,13 +1,33 @@
+use std::str::FromStr;
 use std::{
     collections::HashMap,
     io::{BufRead, BufReader, Write},
     process::exit,
 };
 
+use regex::Regex;
+
 #[derive(Debug)]
 struct Atom(usize, f64, f64, f64);
 
-fn parse_infile(filename: &str) -> Vec<Atom> {
+#[derive(Debug)]
+struct Spectro {
+    atoms: Vec<Atom>,
+    freqs: Vec<f64>,
+    disps: Vec<Vec<f64>>,
+}
+
+impl Spectro {
+    fn new() -> Self {
+        Self {
+            atoms: Vec::new(),
+            freqs: Vec::new(),
+            disps: Vec::new(),
+        }
+    }
+}
+
+fn parse_infile(filename: &str) -> Spectro {
     let atomic_weights = HashMap::from([("1.0078250", 1), ("12.0000000", 6)]);
     let f = match std::fs::File::open(filename) {
         Ok(it) => it,
@@ -19,7 +39,12 @@ fn parse_infile(filename: &str) -> Vec<Atom> {
     let lines = BufReader::new(f).lines().flatten();
     let mut skip = 0;
     let mut in_geom = false;
-    let mut atoms = Vec::new();
+    let mut in_lxm = false;
+    // the block of the LXM matrix
+    let mut block = 0;
+    let mut spectro = Spectro::new();
+    let disp = Regex::new(r"^\d+$").unwrap();
+    let header = Regex::new(r"^(\s*\d+)+\s*$").unwrap();
     for line in lines {
         if skip > 0 {
             skip -= 1
@@ -43,15 +68,45 @@ fn parse_infile(filename: &str) -> Vec<Atom> {
                     .map(|s| s.parse::<f64>().unwrap())
                     .collect::<Vec<_>>()[..]
                 {
-                    atoms.push(Atom(atomic_number, x, y, z));
+                    spectro.atoms.push(Atom(atomic_number, x, y, z));
                 }
+            }
+        } else if line.contains("LXM MATRIX") {
+            skip = 2;
+            in_lxm = true;
+        } else if in_lxm {
+            let fields: Vec<_> = line.split_whitespace().collect();
+            if fields.len() == 0 {
+                skip = 1;
+            } else if header.is_match(&line) || line.contains("--------") {
+                // 10 freqs per chunk, can't set skip to 2 because it would skip
+                // LX matrix at the end
+                block += 1;
+                continue;
+            } else if line.contains("LX MATRIX") {
+                in_lxm = false;
+            } else if disp.is_match(fields[0]) {
+                for (i, d) in fields[1..].iter().enumerate() {
+                    let idx = 10 * block + i;
+                    if spectro.disps.len() <= idx {
+                        spectro.disps.resize(idx + 1, vec![]);
+                    }
+                    spectro.disps[idx].push(f64::from_str(d).unwrap());
+                }
+            } else {
+                spectro.freqs.extend(
+                    fields
+                        .iter()
+                        .map(|s| s.parse::<f64>().unwrap())
+                        .collect::<Vec<_>>(),
+                );
             }
         }
     }
-    atoms
+    spectro
 }
 
-fn write_outfile(filename: &str, atoms: &Vec<Atom>) {
+fn write_outfile(filename: &str, spectro: &Spectro) {
     let mut f = match std::fs::File::create(filename) {
         Ok(it) => it,
         Err(err) => {
@@ -59,7 +114,7 @@ fn write_outfile(filename: &str, atoms: &Vec<Atom>) {
             exit(1);
         }
     };
-    make_outfile(&mut f, atoms);
+    make_outfile(&mut f, &spectro.atoms);
 }
 
 fn make_outfile<W: Write>(w: &mut W, atoms: &Vec<Atom>) {
