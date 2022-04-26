@@ -9,7 +9,7 @@ use regex::Regex;
 
 mod symm;
 
-use symm::Atom;
+use symm::{Atom, Irrep, Molecule};
 
 #[derive(Debug)]
 struct Spectro {
@@ -26,110 +26,102 @@ impl Spectro {
             disps: Vec::new(),
         }
     }
-}
 
-fn parse_infile(filename: &str) -> Spectro {
-    let atomic_weights = HashMap::from([("1.0078250", 1), ("12.0000000", 6)]);
-    let f = match std::fs::File::open(filename) {
-        Ok(it) => it,
-        Err(err) => {
-            eprintln!("failed to open '{filename}' for parsing with '{err}'");
-            exit(1);
-        }
-    };
-    let lines = BufReader::new(f).lines().flatten();
-    let mut skip = 0;
-    let mut in_geom = false;
-    let mut in_lxm = false;
-    // the block of the LXM matrix
-    let mut block = 0;
-    let mut spectro = Spectro::new();
-    let disp = Regex::new(r"^\d+$").unwrap();
-    let header = Regex::new(r"^(\s*\d+)+\s*$").unwrap();
-    for line in lines {
-        if skip > 0 {
-            skip -= 1
-        } else if line.contains("MOLECULAR PRINCIPAL GEOMETRY") {
-            skip = 2;
-            in_geom = true;
-        } else if in_geom {
-            let fields: Vec<_> = line.split_whitespace().collect();
-            if fields.len() == 0 {
-                in_geom = false;
-            } else {
-                let atomic_number = match atomic_weights.get(fields[4]) {
-                    Some(a) => *a,
-                    None => panic!(
-                        "atom with weight {} not found, tell Brent!",
-                        fields[4]
-                    ),
-                };
-                if let [x, y, z] = fields[1..=3]
-                    .iter()
-                    .map(|s| s.parse::<f64>().unwrap())
-                    .collect::<Vec<_>>()[..]
-                {
-                    spectro.atoms.push(Atom::new(atomic_number, x, y, z));
-                }
-            }
-        } else if line.contains("LXM MATRIX") {
-            skip = 2;
-            in_lxm = true;
-        } else if in_lxm {
-            let fields: Vec<_> = line.split_whitespace().collect();
-            if fields.len() == 0 {
-                skip = 1;
-            } else if header.is_match(&line) {
-                block += 1;
-                continue;
-            } else if line.contains("--------") {
-                continue;
-            } else if line.contains("LX MATRIX") {
-                in_lxm = false;
-            } else if disp.is_match(fields[0]) {
-                for (i, d) in fields[1..].iter().enumerate() {
-                    let idx = 10 * block + i;
-                    if spectro.disps.len() <= idx {
-                        spectro.disps.resize(idx + 1, vec![]);
-                    }
-                    spectro.disps[idx].push(f64::from_str(d).unwrap());
-                }
-            } else {
-                spectro.freqs.extend(
-                    fields
-                        .iter()
-                        .filter_map(|s| {
-                            let f = s.parse::<f64>().unwrap();
-                            if f > 1.0 {
-                                Some(f)
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>(),
+    fn load(filename: &str) -> Self {
+        let atomic_weights =
+            HashMap::from([("1.0078250", 1), ("12.0000000", 6)]);
+        let f = match std::fs::File::open(filename) {
+            Ok(it) => it,
+            Err(err) => {
+                eprintln!(
+                    "failed to open '{filename}' for parsing with '{err}'"
                 );
+                exit(1);
+            }
+        };
+        let lines = BufReader::new(f).lines().flatten();
+        let mut skip = 0;
+        let mut in_geom = false;
+        let mut in_lxm = false;
+        // the block of the LXM matrix
+        let mut block = 0;
+        let mut spectro = Spectro::new();
+        let disp = Regex::new(r"^\d+$").unwrap();
+        let header = Regex::new(r"^(\s*\d+)+\s*$").unwrap();
+        for line in lines {
+            if skip > 0 {
+                skip -= 1
+            } else if line.contains("MOLECULAR PRINCIPAL GEOMETRY") {
+                skip = 2;
+                in_geom = true;
+            } else if in_geom {
+                let fields: Vec<_> = line.split_whitespace().collect();
+                if fields.len() == 0 {
+                    in_geom = false;
+                } else {
+                    let atomic_number = match atomic_weights.get(fields[4]) {
+                        Some(a) => *a,
+                        None => panic!(
+                            "atom with weight {} not found, tell Brent!",
+                            fields[4]
+                        ),
+                    };
+                    if let [x, y, z] = fields[1..=3]
+                        .iter()
+                        .map(|s| s.parse::<f64>().unwrap())
+                        .collect::<Vec<_>>()[..]
+                    {
+                        spectro.atoms.push(Atom::new(atomic_number, x, y, z));
+                    }
+                }
+            } else if line.contains("LXM MATRIX") {
+                skip = 2;
+                in_lxm = true;
+            } else if in_lxm {
+                let fields: Vec<_> = line.split_whitespace().collect();
+                if fields.len() == 0 {
+                    skip = 1;
+                } else if header.is_match(&line) {
+                    block += 1;
+                    continue;
+                } else if line.contains("--------") {
+                    continue;
+                } else if line.contains("LX MATRIX") {
+                    in_lxm = false;
+                } else if disp.is_match(fields[0]) {
+                    for (i, d) in fields[1..].iter().enumerate() {
+                        let idx = 10 * block + i;
+                        if spectro.disps.len() <= idx {
+                            spectro.disps.resize(idx + 1, vec![]);
+                        }
+                        spectro.disps[idx].push(f64::from_str(d).unwrap());
+                    }
+                } else {
+                    spectro.freqs.extend(
+                        fields
+                            .iter()
+                            .filter_map(|s| {
+                                let f = s.parse::<f64>().unwrap();
+                                if f > 1.0 {
+                                    Some(f)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<Vec<_>>(),
+                    );
+                }
             }
         }
+        spectro.freqs.reverse();
+        spectro.disps.reverse();
+        spectro.disps =
+            spectro.disps[spectro.disps.len() - spectro.freqs.len()..].to_vec();
+        spectro
     }
-    spectro.freqs.reverse();
-    spectro.disps.reverse();
-    spectro.disps =
-        spectro.disps[spectro.disps.len() - spectro.freqs.len()..].to_vec();
-    spectro
 }
 
-fn write_outfile(filename: &str, spectro: &Spectro) {
-    let mut f = match std::fs::File::create(filename) {
-        Ok(it) => it,
-        Err(err) => {
-            eprintln!("failed to open '{filename}' for writing with '{err}'");
-            exit(1);
-        }
-    };
-    make_outfile(&mut f, spectro);
-}
-
-fn make_outfile<W: Write>(w: &mut W, spectro: &Spectro) {
+fn make_outfile<W: Write>(w: &mut W, spectro: &Spectro, irreps: &Vec<Irrep>) {
     write!(
         w,
         " Entering Gaussian System, Link 0=/usr/local/g16/g16
@@ -171,13 +163,15 @@ fn make_outfile<W: Write>(w: &mut W, spectro: &Spectro) {
  and normal coordinates:
 ").unwrap();
 
+    let mut irreps = irreps.chunks(3);
     for (i, chunk) in spectro.freqs.chunks(3).enumerate() {
+        let irrep = irreps.next().unwrap();
         for j in 0..chunk.len() {
             write!(w, "{:>23}", 3 * i + j + 1).unwrap();
         }
         writeln!(w,).unwrap();
-        for _ in chunk {
-            write!(w, "{:>23}", "A1").unwrap();
+        for r in irrep {
+            write!(w, "{:>23}", r.to_string()).unwrap();
         }
         write!(w, "\n Frequencies --{:>12.4}", chunk[0]).unwrap();
         for freq in &chunk[1..] {
@@ -210,11 +204,13 @@ fn main() {
             exit(1);
         }
     };
-    let atoms = parse_infile(infile);
-    let outfile = match args.get(2) {
-        Some(outfile) => outfile,
-        None => "scope.out",
-    };
-    write_outfile(outfile, &atoms);
-    make_outfile(&mut std::io::stdout(), &atoms);
+    let spectro = Spectro::load(infile);
+    let mol = Molecule::new(spectro.atoms.clone());
+    let pg = mol.point_group();
+    let mut irreps = Vec::new();
+    for disp in &spectro.disps {
+        let mol = mol.clone() + disp.clone();
+        irreps.push(mol.irrep(&pg));
+    }
+    make_outfile(&mut std::io::stdout(), &spectro, &irreps);
 }

@@ -93,6 +93,22 @@ pub enum Irrep {
     A2,
 }
 
+impl ToString for Irrep {
+    fn to_string(&self) -> String {
+        match self {
+            Irrep::A => "A",
+            Irrep::B => "B",
+            Irrep::Ap => "A'",
+            Irrep::App => "A''",
+            Irrep::A1 => "A1",
+            Irrep::B1 => "B1",
+            Irrep::B2 => "B2",
+            Irrep::A2 => "A2",
+        }
+        .to_string()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Molecule {
     pub atoms: Vec<Atom>,
@@ -189,6 +205,10 @@ impl Add<Vec<f64>> for Molecule {
 }
 
 impl Molecule {
+    pub fn new(atoms: Vec<Atom>) -> Self {
+        Self { atoms }
+    }
+
     pub fn default() -> Self {
         Self { atoms: Vec::new() }
     }
