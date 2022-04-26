@@ -1,6 +1,11 @@
 #![allow(dead_code)]
 
-use std::{collections::HashMap, str::FromStr, string::ParseError};
+use std::{
+    collections::HashMap,
+    ops::{Add, Neg},
+    str::FromStr,
+    string::ParseError,
+};
 
 use nalgebra as na;
 
@@ -21,7 +26,7 @@ pub enum Axis {
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct Plane(Axis, Axis);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Atom {
     pub atomic_number: usize,
     pub x: f64,
@@ -37,6 +42,19 @@ impl PartialEq for Atom {
             && close(self.x, other.x)
             && close(self.y, other.y)
             && close(self.z, other.z)
+    }
+}
+
+impl Neg for Atom {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self {
+            atomic_number: self.atomic_number,
+            x: -self.x,
+            y: -self.y,
+            z: -self.z,
+        }
     }
 }
 
@@ -59,6 +77,7 @@ pub enum PointGroup {
     C2v { axis: Axis, planes: Vec<Plane> },
 }
 
+#[derive(Debug, PartialEq)]
 pub enum Irrep {
     // C1
     A,
@@ -146,6 +165,29 @@ impl FromStr for Molecule {
     }
 }
 
+impl Add<Vec<f64>> for Molecule {
+    type Output = Self;
+
+    /// panics if the size of `rhs` doesn't align with the size of `self.atoms`
+    fn add(self, rhs: Vec<f64>) -> Self::Output {
+        if 3 * self.atoms.len() != rhs.len() {
+            panic!(
+                "{} atoms but {} displacements",
+                self.atoms.len(),
+                rhs.len()
+            );
+        }
+        let mut ret = self.clone();
+        // panic above ensures rhs is exactly divisble by 3
+        for (i, chunk) in rhs.chunks_exact(3).enumerate() {
+            ret.atoms[i].x += chunk[0];
+            ret.atoms[i].y += chunk[1];
+            ret.atoms[i].z += chunk[2];
+        }
+        ret
+    }
+}
+
 impl Molecule {
     pub fn default() -> Self {
         Self { atoms: Vec::new() }
@@ -157,6 +199,43 @@ impl Molecule {
             ret.push(na::Vector3::new(atom.x, atom.y, atom.z));
         }
         ret
+    }
+
+    /// compare molecules for equality, respecting order
+    fn strict_eq(&self, other: &Self) -> bool {
+        if self.atoms.len() != other.atoms.len() {
+            return false;
+        }
+        for i in 0..self.atoms.len() {
+            if self.atoms[i] != other.atoms[i] {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// compare molecules for equality, respecting order, and sum the
+    /// contributions
+    fn counting_eq(&self, other: &Self) -> isize {
+        if self.atoms.len() != other.atoms.len() {
+            return 0;
+        }
+        let mut tot = 0;
+        for i in 0..self.atoms.len() {
+            if self.atoms[i] == other.atoms[i] {
+                tot += 1;
+            } else if self.atoms[i] == -other.atoms[i] {
+                tot -= 1;
+            }
+        }
+        // restrict to -1, 0, 1, for now
+        if tot > 0 {
+            1
+        } else if tot < 0 {
+            -1
+        } else {
+            0
+        }
     }
 
     pub fn point_group(&self) -> PointGroup {
@@ -258,9 +337,70 @@ impl Molecule {
         self.transform(ref_mat)
     }
 
-    pub fn irrep(&self, _pg: PointGroup) -> Irrep {
-        // use Irrep::*;
-        todo!();
+    pub fn irrep(&self, pg: &PointGroup) -> Irrep {
+        use Irrep::*;
+        use PointGroup::*;
+        match pg {
+            C1 => A,
+            C2 { axis } => match self.rotate(180.0, &axis).counting_eq(&self) {
+                1 => A,
+                -1 => B,
+                _ => panic!("unmatched C2 Irrep"),
+            },
+            Cs { plane } => match self.reflect(&plane).counting_eq(&self) {
+                1 => Ap,
+                -1 => App,
+                _ => panic!("unmatched Cs Irrep"),
+            },
+            // TODO this is where the plane order can matter - B1 vs B2. as long
+            // as you call `irrep` multiple times with the same PointGroup, you
+            // should get consistent results at least. source of the issue is in
+            // point_group - order of planes there should be based on something
+            // besides random choice of iteration order in the implementation
+            // (mass?)
+            C2v { axis, planes } => {
+                let mut chars = (0, 0, 0);
+                // TODO would be nice to abstract these into some kind of apply
+                // function
+                chars.0 = {
+                    let new = self.rotate(180.0, &axis);
+                    if new == *self {
+                        1 // the same
+                    } else if new.rotate(180.0, &axis) == *self {
+                        -1 // the opposite
+                    } else {
+                        0 // something else
+                    }
+                };
+                chars.1 = {
+                    let new = self.reflect(&planes[0]);
+                    if new == *self {
+                        1
+                    } else if new.reflect(&planes[0]) == *self {
+                        -1
+                    } else {
+                        0
+                    }
+                };
+                chars.2 = {
+                    let new = self.reflect(&planes[1]);
+                    if new == *self {
+                        1
+                    } else if new.reflect(&planes[1]) == *self {
+                        -1
+                    } else {
+                        0
+                    }
+                };
+                match chars {
+                    (1, 1, 1) => A1,
+                    (1, -1, -1) => A2,
+                    (-1, 1, -1) => B1,
+                    (-1, -1, 1) => B2,
+                    _ => panic!("unmatched C2v Irrep with chars = {:?}", chars),
+                }
+            }
+        }
     }
 }
 
@@ -434,5 +574,55 @@ mod tests {
                 planes: vec![Plane(X, Y), Plane(Y, Z)]
             }
         );
+    }
+
+    #[test]
+    fn test_irrep() {
+        use Irrep::*;
+        let mol_orig = Molecule::from_str(
+            "
+    C        0.000000   -0.888844    0.000000
+    C       -0.662697    0.368254    0.000000
+    C        0.662697    0.368254    0.000000
+    H       -1.595193    0.906925    0.000000
+    H        1.595193    0.906925    0.000000
+",
+        )
+        .unwrap();
+        let pg = mol_orig.point_group();
+        let tests = vec![
+            (
+                vec![
+                    0.00, 0.03, 0.00, 0.22, -0.11, 0.00, -0.22, -0.11, 0.00,
+                    -0.57, 0.33, 0.00, 0.57, 0.33, 0.00,
+                ],
+                A1,
+            ),
+            (
+                vec![
+                    -0.01, 0.00, 0.00, 0.17, -0.10, 0.00, 0.17, 0.10, 0.00,
+                    -0.59, 0.34, 0.00, -0.59, -0.34, 0.00,
+                ],
+                B1,
+            ),
+            (
+                vec![
+                    0.00, 0.00, 0.00, 0.00, 0.00, 0.40, 0.00, 0.00, -0.40,
+                    0.00, 0.00, -0.58, 0.00, 0.00, 0.58,
+                ],
+                A2,
+            ),
+            (
+                vec![
+                    0.00, 0.00, 0.16, 0.00, 0.00, -0.27, 0.00, 0.00, -0.27,
+                    0.00, 0.00, 0.64, 0.00, 0.00, 0.64,
+                ],
+                B2,
+            ),
+        ];
+        for test in tests {
+            let mol = mol_orig.clone() + test.0;
+            assert_eq!(mol.irrep(&pg), test.1);
+        }
     }
 }
