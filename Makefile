@@ -9,7 +9,7 @@ ifeq ($(SHORT),0)
 TESTFLAGS += --include-ignored
 endif
 
-WOODS_DEST = 'woods:Programs/scope/.'
+WOODS_DEST = 'woods:Programs/scope/scope-bin'
 
 ${TARGET}: src/*.rs
 	RUSTFLAGS='-C target-feature=+crt-static' \
