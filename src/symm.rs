@@ -362,11 +362,16 @@ impl Molecule {
         use PointGroup::*;
         match pg {
             C1 => A,
-            C2 { axis } => match self.rotate(180.0, &axis).counting_eq(&self) {
-                1 => A,
-                -1 => B,
-                _ => panic!("unmatched C2 Irrep"),
-            },
+            C2 { axis } => {
+                let new = self.rotate(180.0, &axis);
+                if new == *self {
+                    A
+                } else if new.rotate(180.0, &axis) == *self {
+                    B
+                } else {
+                    panic!("unmatched C2 Irrep");
+                }
+            }
             Cs { plane } => {
                 let new = self.reflect(&plane);
                 if new == *self {
