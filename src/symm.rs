@@ -367,11 +367,16 @@ impl Molecule {
                 -1 => B,
                 _ => panic!("unmatched C2 Irrep"),
             },
-            Cs { plane } => match self.reflect(&plane).counting_eq(&self) {
-                1 => Ap,
-                -1 => App,
-                _ => panic!("unmatched Cs Irrep"),
-            },
+            Cs { plane } => {
+                let new = self.reflect(&plane);
+                if new == *self {
+                    Ap
+                } else if new.reflect(&plane) == *self {
+                    App
+                } else {
+                    panic!("unmatched Cs Irrep");
+                }
+            }
             // TODO this is where the plane order can matter - B1 vs B2. as long
             // as you call `irrep` multiple times with the same PointGroup, you
             // should get consistent results at least. source of the issue is in
