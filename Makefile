@@ -3,9 +3,20 @@ ARGS =
 TESTFLAGS = --test-threads=1 --nocapture
 SHORT = 0
 
+TARGET=/home/brent/Projects/scope/target/x86_64-unknown-linux-gnu/release/scope
+
 ifeq ($(SHORT),0)
 TESTFLAGS += --include-ignored
 endif
+
+WOODS_DEST = 'woods:Programs/scope/.'
+
+${TARGET}: src/*.rs
+	RUSTFLAGS='-C target-feature=+crt-static' \
+		cargo build --release --target x86_64-unknown-linux-gnu \
+
+woods: ${TARGET}
+	scp -C $? ${WOODS_DEST}
 
 # ELAND_DEST = 'eland:programs/semp/.'
 # eland:
