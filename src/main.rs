@@ -80,6 +80,10 @@ impl Spectro {
             } else if line.contains("LXM MATRIX") {
                 skip = 2;
                 in_lxm = true;
+		// reset these. for degmodes it gets printed twice
+		block = 0;
+		spectro.disps = Vec::new();
+		spectro.freqs= Vec::new();
             } else if in_lxm {
                 let fields: Vec<_> = line.split_whitespace().collect();
                 if fields.len() == 0 {
