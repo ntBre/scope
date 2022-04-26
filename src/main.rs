@@ -11,6 +11,9 @@ mod symm;
 
 use symm::{Atom, Irrep, Molecule};
 
+/// threshold for discarding rotations and translations
+const ROTRANS_THRSH: f64 = 30.0;
+
 #[derive(Debug)]
 struct Spectro {
     atoms: Vec<Atom>,
@@ -102,7 +105,7 @@ impl Spectro {
                             .iter()
                             .filter_map(|s| {
                                 let f = s.parse::<f64>().unwrap();
-                                if f > 1.0 {
+                                if f > ROTRANS_THRSH {
                                     Some(f)
                                 } else {
                                     None
