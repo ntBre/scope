@@ -31,8 +31,26 @@ impl Spectro {
     }
 
     fn load(filename: &str) -> Self {
-        let atomic_weights =
-            HashMap::from([("1.0078250", 1), ("12.0000000", 6)]);
+        let atomic_weights = HashMap::from([
+            ("1.0078250", 1),
+            ("4.0026032", 2),
+            ("7.0160030", 3),
+            ("9.0121822", 4),
+            ("11.0093054", 5),
+            ("12.0000000", 6),
+            ("14.0030740", 7),
+            ("15.9949146", 8),
+            ("18.9984032", 9),
+            ("19.9924356", 10),
+            ("22.9897677", 11),
+            ("23.9850423", 12),
+            ("26.9815386", 13),
+            ("27.9769271", 14),
+            ("30.9737620", 15),
+            ("31.9720707", 16),
+            ("34.9688527", 17),
+            ("39.9623837", 18),
+        ]);
         let f = match std::fs::File::open(filename) {
             Ok(it) => it,
             Err(err) => {
@@ -80,10 +98,10 @@ impl Spectro {
             } else if line.contains("LXM MATRIX") {
                 skip = 2;
                 in_lxm = true;
-		// reset these. for degmodes it gets printed twice
-		block = 0;
-		spectro.disps = Vec::new();
-		spectro.freqs= Vec::new();
+                // reset these. for degmodes it gets printed twice
+                block = 0;
+                spectro.disps = Vec::new();
+                spectro.freqs = Vec::new();
             } else if in_lxm {
                 let fields: Vec<_> = line.split_whitespace().collect();
                 if fields.len() == 0 {
