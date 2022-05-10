@@ -175,6 +175,7 @@ version = "0.1.0"
 dependencies = [
  "nalgebra",
  "regex",
+ "symm",
 ]
 
 [[package]]
@@ -188,6 +189,13 @@ dependencies = [
  "num-traits",
  "paste",
  "wide",
+]
+
+[[package]]
+name = "symm"
+version = "0.1.0"
+dependencies = [
+ "nalgebra",
 ]
 
 [[package]]

@@ -7,8 +7,6 @@ use std::{
 
 use regex::Regex;
 
-mod symm;
-
 use symm::{Atom, Irrep, Molecule};
 
 /// threshold for discarding rotations and translations

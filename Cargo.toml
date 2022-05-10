@@ -9,3 +9,4 @@ edition = "2021"
 # gtk = { version = "0.4.7", package = "gtk4" }
 regex = "1"
 nalgebra = "0.30.1"
+symm = { path = "/home/brent/Projects/symm" }
