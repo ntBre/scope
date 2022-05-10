@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::{
     collections::HashMap,
     ops::{Add, Neg},
@@ -219,43 +217,6 @@ impl Molecule {
             ret.push(na::Vector3::new(atom.x, atom.y, atom.z));
         }
         ret
-    }
-
-    /// compare molecules for equality, respecting order
-    fn strict_eq(&self, other: &Self) -> bool {
-        if self.atoms.len() != other.atoms.len() {
-            return false;
-        }
-        for i in 0..self.atoms.len() {
-            if self.atoms[i] != other.atoms[i] {
-                return false;
-            }
-        }
-        true
-    }
-
-    /// compare molecules for equality, respecting order, and sum the
-    /// contributions
-    fn counting_eq(&self, other: &Self) -> isize {
-        if self.atoms.len() != other.atoms.len() {
-            return 0;
-        }
-        let mut tot = 0;
-        for i in 0..self.atoms.len() {
-            if self.atoms[i] == other.atoms[i] {
-                tot += 1;
-            } else if self.atoms[i] == -other.atoms[i] {
-                tot -= 1;
-            }
-        }
-        // restrict to -1, 0, 1, for now
-        if tot > 0 {
-            1
-        } else if tot < 0 {
-            -1
-        } else {
-            0
-        }
     }
 
     pub fn point_group(&self) -> PointGroup {
