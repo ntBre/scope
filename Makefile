@@ -31,6 +31,9 @@ woods: ${TARGET}
 test:
 	RUST_BACKTRACE=1 cargo test -- ${TESTFLAGS} ${ARGS}
 
+install: ${TARGET}
+	cp $? /usr/bin/.
+
 # profile = RUSTFLAGS='-g' cargo build --release --bin $(1); \
 # 	valgrind --tool=callgrind --callgrind-out-file=callgrind.out	\
 # 		--collect-jumps=yes --simulate-cache=yes		\
