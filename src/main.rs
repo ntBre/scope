@@ -233,7 +233,11 @@ fn main() {
     let mut irreps = Vec::new();
     for disp in &spectro.disps {
         let mol = mol.clone() + disp.clone();
-        irreps.push(mol.irrep(&pg));
+        let irrep = match mol.irrep_approx(&pg, 1e-5) {
+            Ok(p) => p,
+            Err(_) => panic!("failed to compute irrep for\n{}", mol),
+        };
+        irreps.push(irrep);
     }
     make_outfile(&mut std::io::stdout(), &spectro, &irreps);
 }

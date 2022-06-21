@@ -11,12 +11,12 @@ endif
 
 WOODS_DEST = 'woods:Programs/scope/scope-bin'
 
-${TARGET}: src/*.rs
+build: src/*.rs
 	RUSTFLAGS='-C target-feature=+crt-static' \
 		cargo build --release --target x86_64-unknown-linux-gnu \
 
-woods: ${TARGET}
-	scp -C $? ${WOODS_DEST}
+woods: build
+	scp -C ${TARGET} ${WOODS_DEST}
 
 # ELAND_DEST = 'eland:programs/semp/.'
 # eland:
