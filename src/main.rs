@@ -1,4 +1,4 @@
-use std::{io::Write, process::exit};
+use std::io::Write;
 
 use summarize::Summary;
 
@@ -81,8 +81,8 @@ fn main() {
     let infile = match args.get(1) {
         Some(infile) => infile,
         None => {
-            eprintln!("{}: not enough arguments", args[0]);
-            exit(1);
+            eprintln!("usage: scope FILENAME");
+            return;
         }
     };
     let spectro = Summary::new(infile);

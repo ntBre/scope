@@ -1,0 +1,6 @@
+#!/bin/sh
+
+tmp=$(mktemp)
+scope $1 > $tmp
+molden -m $tmp
+rm $tmp
