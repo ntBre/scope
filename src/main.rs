@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use summarize::Summary;
+use summarize::{Summary, Recompute};
 
 fn make_outfile<W: Write>(w: &mut W, spectro: &Summary) {
     write!(
@@ -85,6 +85,6 @@ fn main() {
             return;
         }
     };
-    let spectro = Summary::new(infile);
+    let spectro = Summary::new(infile, Recompute::No);
     make_outfile(&mut std::io::stdout(), &spectro);
 }
