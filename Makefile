@@ -21,6 +21,9 @@ woods: build
 test:
 	RUST_BACKTRACE=1 cargo test -- ${TESTFLAGS} ${ARGS}
 
+clippy:
+	cargo clippy
+
 $(TARGET): build
 
 install: ${TARGET}
